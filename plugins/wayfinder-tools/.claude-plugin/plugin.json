@@ -1,6 +1,6 @@
 {
   "name": "wayfinder-tools",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "A local, read-only browser dashboard over wayfinder maps held in GitHub Issues.",
   "author": {
     "name": "Mingrath Mekavichai",
@@ -9,5 +9,10 @@
   "homepage": "https://github.com/mingrath/wfdash",
   "repository": "https://github.com/mingrath/wfdash",
   "license": "MIT",
-  "keywords": ["wayfinder", "github-issues", "dashboard", "planning"]
+  "keywords": [
+    "wayfinder",
+    "github-issues",
+    "dashboard",
+    "planning"
+  ]
 }

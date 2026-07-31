@@ -1,6 +1,6 @@
 {
   "name": "@mingrath/wfdash",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "A local, read-only browser dashboard over wayfinder maps held in GitHub Issues.",
   "keywords": [
     "wayfinder",

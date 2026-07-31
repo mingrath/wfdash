@@ -19,9 +19,9 @@ import { spawn, execFile } from 'node:child_process';
 import { occupantOf, takenMessage } from '../port.js';
 import { install, slugOf, staleInstalls, olderThan, version } from '../install.js';
 import { stat } from 'node:fs/promises';
-import { accessSync, constants } from 'node:fs';
+import { accessSync, constants, realpathSync } from 'node:fs';
 import { join, dirname, delimiter } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '..');
@@ -301,5 +301,19 @@ export async function main(argv) {
   return start(verb);
 }
 
-const isMain = process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).href;
+/**
+ * Are we the entry point, or is something importing us?
+ *
+ * **Both sides have to be real paths.** `npm i -g` puts a *symlink* on PATH —
+ * `/opt/homebrew/bin/wfdash` → `../lib/node_modules/@mingrath/wfdash/bin/wfdash.js` — and
+ * Node reports the symlink in `process.argv[1]` while resolving `import.meta.url` to the
+ * target. Comparing them raw makes this false for every global install, and the command
+ * then loads its module graph, runs nothing, and exits 0. Silently. The first release
+ * shipped exactly that.
+ *
+ * `pathToFileURL` rather than a `file://` template for the second reason the old line was
+ * wrong: a path containing a space or any non-ASCII character does not survive template
+ * interpolation into a URL, and `/Users/…/My Code/` is an ordinary place to keep a checkout.
+ */
+const isMain = process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href;
 if (isMain) await main(process.argv.slice(2));
