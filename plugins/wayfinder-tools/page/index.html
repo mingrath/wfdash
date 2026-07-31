@@ -1,0 +1,41 @@
+<!doctype html>
+<!-- The dashboard. One document for both routes: `/` is the overview and
+     `/m/<owner>/<repo>/<number>` is a map view, and the server serves these same bytes for
+     every path under `/m/`, which is what keeps "the server holds no current-map state"
+     true when a deep link or a hard reload arrives as a real path.
+
+     ES modules loaded natively by the browser: no build step between an edit and a reload,
+     and the pure parts — layout, markdown, change detection — stay importable outside a
+     browser by the same runner that drives the process-boundary tests. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>wfdash</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<div id="wrap">
+  <header id="masthead" hidden>
+    <div class="line1">
+      <a id="back" href="/">← all maps</a>
+      <h1><a id="maptitle" href="#"></a></h1>
+      <span id="where"></span>
+    </div>
+    <div id="dest" class="clamped"></div>
+    <button id="more" hidden>more</button>
+  </header>
+  <div id="banner"></div>
+  <div id="body">
+    <div id="col">
+      <div id="overview" hidden></div>
+      <div id="stage" hidden></div>
+      <div id="error" hidden></div>
+    </div>
+    <aside id="dock" hidden><div id="scroller"></div><div id="rail"><div id="thumb"></div></div></aside>
+  </div>
+</div>
+<div id="status"></div>
+<script type="module" src="/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,20 @@
+{
+  "name": "wfdash",
+  "version": "0.1.0",
+  "description": "A local, read-only browser dashboard over wayfinder maps held in GitHub Issues.",
+  "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mingrath/wfdash.git"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node bin/wfdash.js",
+    "stop": "node bin/wfdash.js stop",
+    "restart": "node bin/wfdash.js restart",
+    "server": "node server.js"
+  }
+}

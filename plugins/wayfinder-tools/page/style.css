@@ -1,0 +1,376 @@
+/* The dashboard's whole stylesheet. No build step, no framework, no reset beyond what is
+   used. Every number in here was measured on a rendered page rather than predicted. */
+
+:root {
+  --bg: #0d1117;
+  --panel: #161b22;
+  --line: #30363d;
+  --text: #e6edf3;
+  --dim: #7d8590;
+  --frontier: #3fb950;
+  --claimed: #d29922;
+  --blocked: #a371f7;
+  --resolved: #388bfd;
+  --oos: #484f58;
+  --undermined: #f85149;
+  --accent: #1f6feb;
+  /* ADR 0004's dock, less ADR 0009's 8px of scrollbar: the prose column measures 451px. */
+  --dock: 460px;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--text);
+  font: 13px/1.45 ui-sans-serif, -apple-system, 'SF Pro Text', system-ui, sans-serif;
+}
+
+a { color: #58a6ff; }
+
+/* ============================================================ the masthead
+   Spans the window, above both graph and dock. It costs no scale — the fit is
+   width-bound — and it newly scrolls one map of twenty-one. Measured 146px. */
+#masthead {
+  border-bottom: 1px solid var(--line);
+  background: #010409;
+  padding: 12px 18px 13px;
+}
+#masthead .line1 {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  white-space: nowrap;
+}
+/* `← all maps` rides the existing title line: no line added, no height added, and no
+   corpus map's title line overflows at 1440px (worst case 130 of 179 characters). */
+#back {
+  color: var(--dim);
+  text-decoration: none;
+  font-size: 11.5px;
+  flex: 0 0 auto;
+  cursor: pointer;
+}
+#back:hover { color: var(--text); }
+#masthead h1 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+#masthead h1 a { color: var(--text); text-decoration: none; }
+#masthead h1 a:hover { text-decoration: underline; }
+#where { color: var(--dim); font-size: 11.5px; flex: 0 0 auto; }
+
+/* Not one destination of twenty fits a single line at any width on the page, so there is
+   no destination *line*, only a paragraph to place. Four lines completes 15 of 20; the
+   toggle is present exactly when there is more, so nothing is truncated silently. */
+#dest {
+  margin: 7px 0 0;
+  color: #c9d1d9;
+  font-size: 13px;
+  line-height: 20px;
+  max-width: 1180px;
+}
+#dest.clamped {
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+#dest p { margin: 0 0 6px; }
+#dest p:last-child { margin-bottom: 0; }
+#more {
+  background: none;
+  border: 0;
+  color: #58a6ff;
+  font: inherit;
+  font-size: 11.5px;
+  padding: 2px 0 0;
+  cursor: pointer;
+}
+#more[hidden] { display: none; }
+
+/* ============================================================ the banner
+   One HTML sentence, so it stays 13px whatever the fit does — a skeleton page has no
+   sentences, and a fully-collapsed map otherwise reads as *unloaded*. 100% only. */
+#banner {
+  display: none;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 18px;
+  background: rgba(56, 139, 253, 0.1);
+  border-bottom: 1px solid rgba(56, 139, 253, 0.35);
+  color: #a5c9ff;
+  font-size: 13px;
+}
+#banner.on { display: flex; }
+#banner b { color: #cfe2ff; }
+#banner .tick { color: var(--resolved); font-size: 15px; }
+
+/* ============================================================ the frame */
+#wrap { position: absolute; inset: 0 0 26px 0; display: flex; flex-direction: column; }
+#body { flex: 1; display: flex; min-height: 0; }
+#col { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+#stage { flex: 1; overflow-y: auto; overflow-x: hidden; text-align: center; position: relative; }
+#stage svg { display: inline-block; }
+#empty { padding: 40px; color: var(--dim); }
+
+/* ============================================================ the drawing */
+.node { cursor: pointer; }
+.node.dim { opacity: 0.16; }
+.node text { pointer-events: none; user-select: none; }
+.ttl { fill: var(--text); font-size: 11.5px; }
+.meta { fill: var(--dim); font-size: 9.5px; font-variant-numeric: tabular-nums; letter-spacing: 0.02em; }
+.num { fill: var(--dim); font-variant-numeric: tabular-nums; }
+.edge { fill: none; stroke: var(--line); stroke-width: 1.4; }
+.edge.cleared { stroke-dasharray: 3 3; opacity: 0.5; }
+.edge.hot { stroke: var(--claimed); stroke-width: 2.2; opacity: 1; }
+.edge.dim { opacity: 0.05; }
+.lane-head {
+  fill: var(--dim);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.node.sel .frame { stroke: #fff; stroke-width: 2.6; stroke-opacity: 1; }
+/* The ring: neutral, accumulating, cleared by a click and by nothing else. */
+.node.ringed .frame { stroke: #e6edf3; stroke-width: 2.5; stroke-opacity: 1; }
+.node.hl .frame { stroke: var(--claimed); stroke-width: 2.4; stroke-opacity: 1; }
+/* Layout is never pinned and there is no transition: re-layout is an honest,
+   instantaneous redraw. The 200ms root-group transform was watched during a real 4→6 rank
+   re-layout and is worse than a teleport — it renders the new, wider drawing at the *old*
+   scale throughout, clipped on two edges, while the nodes have already jumped. */
+
+/* ============================================================ the dock */
+#dock {
+  position: relative;
+  width: var(--dock);
+  flex: 0 0 var(--dock);
+  background: var(--panel);
+  border-left: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+#dock[hidden] { display: none; }
+#scroller { overflow-y: auto; overflow-x: hidden; flex: 1; min-height: 0; }
+
+/* The panel had no scroll affordance at all: the measured gutter is 0px, because macOS
+   overlay scrollbars take no layout space and paint only during a gesture, so at rest a
+   6.4-screen thread and a 1-screen thread are pixel-identical.
+
+   ADR 0009 fixed that with `::-webkit-scrollbar`, on the grounds that styling it opts the
+   container out of overlay mode. **Measured on today's Chrome, it no longer does** — at
+   true device pixels, `::-webkit-scrollbar{width:8px}` reserves 0px and paints nothing,
+   `scrollbar-gutter:stable` reserves the 8px and still paints nothing, and
+   `scrollbar-color` does neither. Four CSS rules now buy an invisible scrollbar.
+
+   So this is the rail that ADR 0009 built, measured working, and rejected as "identical
+   information for ~15 lines of JavaScript". Its own Consequences name it as the fallback
+   "if that ever matters", and it now matters twice over: the CSS route is dead on Chrome,
+   and it never worked on Firefox — which is this machine's default browser. The decision
+   it serves is untouched: 8px of the 460, visible at rest, draggable, and only when the
+   content overflows. */
+#rail {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 8px;
+  background: #232a33;
+  display: none;
+  z-index: 4;
+}
+#dock.overflowing #rail { display: block; }
+/* The 8px comes off the scroll container, so the prose column measures 451 of the 460
+   exactly as recorded — and stays 459 on a panel that fits. */
+#dock.overflowing #scroller { margin-right: 8px; }
+#thumb {
+  position: absolute;
+  left: 0;
+  width: 8px;
+  min-height: 24px;
+  border-radius: 4px;
+  background: #4d565f;
+}
+#thumb:hover, #thumb.dragging { background: #6e7681; }
+
+.ph {
+  position: sticky;
+  top: 0;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+  padding: 11px 16px 9px;
+  z-index: 3;
+}
+.ph h2 { margin: 0 0 6px; font-size: 15px; line-height: 1.3; }
+.ph .m { color: var(--dim); font-size: 11.5px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.ph .close {
+  margin-left: auto;
+  background: none;
+  border: 0;
+  color: var(--dim);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 2px;
+}
+.ph .close:hover { color: var(--text); }
+.pill { border: 1px solid currentColor; border-radius: 999px; padding: 1px 7px; font-size: 10.5px; }
+.pb { padding: 0 16px 40px; }
+
+/* A label that was scrolling past is made to wait until its own prose has finished. The
+   labels already exist and already carry the right words, so nothing is promoted and
+   nothing is invented — it takes "which part am I in" from 0.14 worst-case to 1.00 for
+   +2.5% of height and no new element. `--stop` is the sticky header's measured height. */
+.lbl {
+  position: sticky;
+  top: var(--stop, 0px);
+  background: var(--panel);
+  z-index: 2;
+  color: var(--dim);
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin: 0;
+  padding: 12px 0 4px;
+}
+.lbl.tog { cursor: pointer; }
+.lbl .count { text-transform: none; letter-spacing: 0; opacity: 0.8; }
+.sect > .body { padding-bottom: 4px; }
+.sect.folded > .body { display: none; }
+
+.dep { display: flex; gap: 7px; padding: 3px 0; cursor: pointer; font-size: 12px; align-items: baseline; }
+.dep:hover { color: #fff; }
+.dep.done { color: var(--dim); }
+.dep .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.cmt { border-top: 1px solid #21262d; }
+.cmt:first-of-type { border-top: 0; }
+.chead {
+  position: sticky;
+  top: var(--stop, 0px);
+  background: var(--panel);
+  z-index: 2;
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  padding: 11px 0 5px;
+  font-size: 11px;
+  color: var(--dim);
+}
+.chead .kind {
+  border-radius: 3px;
+  padding: 1px 5px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background: #21262d;
+  color: #8b949e;
+}
+.chead .kind.answer { background: rgba(63, 185, 80, 0.16); color: #56d364; }
+.chead .kind.amendment { background: rgba(210, 153, 34, 0.16); color: #e3b341; }
+.chead .kind.archival { background: rgba(72, 79, 88, 0.3); color: #8b949e; }
+.chead .kind.inbound { background: rgba(88, 166, 255, 0.16); color: #79c0ff; }
+.cmt.folded .body { display: none; }
+.chead .fold { cursor: pointer; margin-left: auto; }
+
+.empty-line { color: var(--dim); font-style: italic; padding: 10px 0; }
+.marker {
+  display: block;
+  width: 100%;
+  text-align: left;
+  margin: 10px 0;
+  padding: 7px 10px;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  background: rgba(31, 111, 235, 0.12);
+  color: #cfe2ff;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+/* markdown */
+.body { font-size: 12.5px; color: #c9d1d9; overflow-wrap: anywhere; }
+.body h1, .body h2, .body h3 { font-size: 13px; margin: 12px 0 4px; color: var(--text); }
+.body p { margin: 0 0 8px; }
+.body ul, .body ol { margin: 0 0 8px; padding-left: 20px; }
+.body li { margin: 0 0 4px; }
+.body code { background: #21262d; border-radius: 4px; padding: 0 4px; font-size: 11.5px; }
+.body pre { background: #0d1117; border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; overflow-x: auto; }
+.body pre code { background: none; padding: 0; }
+.body table { border-collapse: collapse; font-size: 11.5px; margin: 0 0 8px; display: block; overflow-x: auto; }
+.body th, .body td { border: 1px solid var(--line); padding: 3px 7px; text-align: left; }
+.body blockquote { margin: 0 0 8px; padding-left: 10px; border-left: 2px solid var(--line); color: var(--dim); }
+.body hr { border: 0; border-top: 1px solid var(--line); margin: 10px 0; }
+.body a.tref { color: #79c0ff; text-decoration: underline dotted; cursor: pointer; }
+
+/* ============================================================ the overview */
+#overview { flex: 1; overflow-y: auto; padding: 16px 18px 40px; }
+#overview h1 { margin: 0 0 4px; font-size: 15px; }
+#overview .sub { color: var(--dim); font-size: 11.5px; margin: 0 0 14px; }
+.grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.card {
+  display: flex;
+  flex-direction: column;
+  text-decoration: none;
+  color: inherit;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 11px 14px 10px;
+}
+.card:hover { border-color: #484f58; }
+/* Neutral `#e6edf3`: there is no hue left, and blue already means *finished* on this page.
+   The ring says which card; the delta says what moved. */
+.card.ringed { border-color: #e6edf3; box-shadow: 0 0 0 1px #e6edf3; }
+.card .title { font-size: 15px; font-weight: 600; line-height: 1.3; color: var(--text); }
+.card .where { margin-top: 4px; font-size: 11.5px; color: var(--dim); }
+/* Bottom-aligned, so every bar in a grid row lands on one line and there is a column to
+   scan down rather than a scatter. */
+.card .counts { margin-top: auto; padding-top: 10px; display: flex; align-items: center; gap: 9px; }
+.bar { display: flex; height: 6px; border-radius: 3px; overflow: hidden; background: #21262d; flex: 1; }
+.bar i { display: block; height: 100%; }
+.num { font-size: 12.5px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.num.take { color: var(--frontier); font-weight: 600; }
+.num.none { color: var(--dim); }
+.num.done { color: var(--resolved); font-weight: 600; }
+.num.empty { color: var(--dim); font-style: italic; }
+.delta { color: var(--text); font-size: 11.5px; font-variant-numeric: tabular-nums; }
+
+/* ============================================================ the status bar */
+#status {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 0 14px;
+  font-size: 11.5px;
+  color: var(--dim);
+  background: #010409;
+  border-top: 1px solid var(--line);
+  z-index: 40;
+}
+#status b { color: var(--text); }
+#status .chg { color: var(--text); font-weight: 600; }
+#status .stale { color: var(--claimed); font-weight: 600; }
+#status .err { color: var(--undermined); }
+#status .clock { margin-left: auto; font-variant-numeric: tabular-nums; }
+
+#error { padding: 40px 18px; max-width: 720px; }
+#error h2 { margin: 0 0 8px; font-size: 15px; color: var(--undermined); }
+#error .hint { color: var(--dim); margin-top: 10px; }
+#error code { background: #21262d; border-radius: 4px; padding: 1px 5px; }
