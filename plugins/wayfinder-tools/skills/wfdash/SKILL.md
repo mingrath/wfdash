@@ -6,29 +6,44 @@ description: Serve wayfinder maps held in GitHub Issues as a local browser dashb
 # wfdash
 
 A local, read-only browser dashboard over wayfinder maps. It shells out to `gh`, so it
-inherits the dev's existing auth and **no token ever reaches the browser**, and it has
+inherits the user's existing auth and **no token ever reaches the browser**, and it has
 **zero write endpoints** — it never mutates the tracker.
 
 ## Running it
 
-Run the launcher that sits beside this file — **not** a bare `bin/wfdash.js`, which only
-resolves from the plugin root:
-
 ```sh
-node "${CLAUDE_SKILL_DIR}/wfdash.mjs"                    # the overview
-node "${CLAUDE_SKILL_DIR}/wfdash.mjs" owner/repo#12      # one map
-node "${CLAUDE_SKILL_DIR}/wfdash.mjs" stop
-node "${CLAUDE_SKILL_DIR}/wfdash.mjs" restart
+wfdash                      # the overview
+wfdash owner/repo#12        # one map
+wfdash stop
+wfdash restart
 ```
 
-It resolves the rest of the plugin from its own real location, so it works from any working
-directory.
+**If `wfdash` is not on `PATH`**, this copy came from the Claude Code plugin, which installs
+no global command. Run the launcher sitting beside this file instead, with the same
+arguments — Claude Code names that directory `${CLAUDE_SKILL_DIR}`:
+
+```sh
+node "${CLAUDE_SKILL_DIR}/wfdash.mjs" owner/repo#12
+```
 
 A target may be written `owner/repo#N`, `owner/repo/N`, or as a GitHub issue URL. A bare
 invocation opens the overview — **the current directory is never used to infer a map**,
 because measured against a 21-map corpus a cwd could unambiguously open only 2 of them.
 
 The command prints the URL and opens a browser at it. Report that URL to the user.
+
+**Where there is no browser** — a container, a cloud task, a background agent, a machine
+with no display — it opens nothing and says so on a second line:
+
+```
+http://127.0.0.1:7777/m/owner/repo/12
+wfdash: no browser here (no DISPLAY or WAYLAND_DISPLAY) — nothing was opened, the URL above is yours to open.
+```
+
+The dashboard is running either way; only the tab is missing. Pass that line on rather than
+reporting a browser that did not open. `WFDASH_NO_BROWSER=1` forces this, which is the fix
+for a Mac reached over SSH, where the opener "succeeds" by throwing a tab at whoever is
+sitting at the console.
 
 ## What the user sees
 
@@ -69,20 +84,28 @@ cycle — renders **in the page**, because the server is fine and only that targ
 ## Things worth knowing
 
 - **Nothing about the running process is written to disk.** No pidfile, no port file. The
-  port *is* the discovery mechanism: the launcher probes `GET /api/health` and reuses the
+  port *is* the discovery mechanism: the command probes `GET /api/health` and reuses the
   server if it answers `{app: "wfdash"}`.
 - **A second invocation opens a second tab**, and nothing steers or closes anything.
   Tab-per-map is the feature.
 - **The server reaps itself after 30 idle minutes**, and an open tab heartbeats
   `/api/health` every 10 minutes to stop that happening under it. Those two numbers are
   coupled and move together.
-- Zero npm dependencies and no build step, server and page alike.
+- Zero npm dependencies and no build step, server and page alike. It needs `gh` on `PATH`
+  and authenticated, and Node 18 or newer.
 
-## Updating it
+## Where this copy came from, and updating it
 
-This plugin is installed from a third-party marketplace, and those do not auto-update by
-default. If the user wants the newest version:
+wfdash ships through two channels, and this file is the same in both.
 
-```
-/plugin marketplace update mingrath
-```
+| channel | install | update |
+| --- | --- | --- |
+| npm — any agent | `npm i -g @mingrath/wfdash`, then `wfdash install` | `npm i -g @mingrath/wfdash@latest`, then `wfdash install` |
+| Claude Code plugin | `/plugin marketplace add mingrath/wfdash`, then `/plugin install wayfinder-tools@mingrath` | `/plugin marketplace update mingrath` |
+
+`wfdash install` copies this skill into every agent on the machine that loads a `SKILL.md`
+and reports what it wrote and what it skipped. It is the user's command to run, not one to
+run on their behalf.
+
+If the command prints a line saying this installed copy is older than the command itself,
+the fix is to rerun `wfdash install`.
