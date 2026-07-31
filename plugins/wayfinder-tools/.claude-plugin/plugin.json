@@ -1,6 +1,6 @@
 {
   "name": "wayfinder-tools",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "A local, read-only browser dashboard over wayfinder maps held in GitHub Issues.",
   "author": {
     "name": "Mingrath Mekavichai",
