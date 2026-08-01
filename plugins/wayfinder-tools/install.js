@@ -17,7 +17,7 @@
 //     plugin, where `bin/` is two levels up; copied anywhere else its import resolves to
 //     nothing, and anywhere else `wfdash` is on PATH by construction.
 
-import { mkdir, readFile, writeFile, readdir } from 'node:fs/promises';
+import { mkdir, readFile, writeFile, readdir, lstat, readlink } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, dirname } from 'node:path';
@@ -209,17 +209,42 @@ export async function plan({ home = homedir(), only = null } = {}) {
 
 const rel = (home, path) => (path.startsWith(home) ? `~${path.slice(home.length)}` : path);
 
+/** Where `path` points, if it is a symlink. Never follows it — that is the whole point. */
+const linkTarget = (path) =>
+  lstat(path)
+    .then((s) => (s.isSymbolicLink() ? readlink(path) : null))
+    .catch(() => null);
+
 async function writeOne(home, target, body, { force }) {
   const dir = join(home, target.root, 'wfdash');
   const file = join(dir, 'SKILL.md');
   const where = rel(home, file);
 
+  // **A symlink is refused outright, `--force` included.** `mkdir` and `writeFile` both
+  // follow links, so writing here does not replace the skill — it reaches down the link and
+  // overwrites whatever is on the other end. The common arrangement is a development
+  // install pointing at a checkout, and this repo's own machine has exactly that:
+  // `~/.claude/skills/wfdash` → `…/wfdash/skill`, whose `SKILL.md` is tracked source.
+  //
+  // `--force` means "replace the skill that is here". It has never meant "follow a link out
+  // of the skills directory and overwrite a file somewhere else", so it does not authorise
+  // this. Removing the link is a decision for whoever made it, and the message says so.
+  for (const [path, what] of [[dir, 'directory'], [file, 'SKILL.md']]) {
+    const points = await linkTarget(path);
+    if (points) {
+      return {
+        verb: 'skipped',
+        where,
+        why: `its ${what} is a symlink to ${points} — writing would overwrite that, not the skill; remove the link first`,
+      };
+    }
+  }
+
   let existing = null;
   if (existsSync(file)) existing = await readFile(file, 'utf8').catch(() => null);
 
-  // Someone else's skill called `wfdash` — or this repo's own development symlink. Refusing
-  // is the only safe answer: overwriting is the one failure here that destroys work, and
-  // the stamp is what tells the two apart.
+  // Someone else's skill called `wfdash`. Refusing is the only safe answer: overwriting is
+  // the one failure here that destroys work, and the stamp is what tells the two apart.
   if (existing !== null && !STAMP.test(existing) && !force) {
     return { verb: 'skipped', where, why: 'a SKILL.md is there that wfdash did not write; `--force` replaces it' };
   }
