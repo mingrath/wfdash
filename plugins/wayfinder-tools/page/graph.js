@@ -12,7 +12,11 @@ import {
   TITLE_PX,
   META_PX,
   DONE,
+  LIVE,
+  TAKEABLE,
   HAS_STRIP,
+  ATTEND_LABEL,
+  attendOf,
   buildLayout,
   geometry,
   fitFor,
@@ -124,12 +128,34 @@ function drawNode(node, group, w, h) {
     // Type earns its place on exactly this box: it decides *who* takes the ticket — a
     // `research` ticket goes to an agent unattended, a `grilling` needs a human in the
     // room. On every other status that question is not being asked.
+    //
+    // The second half is now the ticket's own answer to that same question rather than
+    // `takeable`, which the lane head has already said for the whole column. It is **5
+    // characters shorter** than the word it replaces, so ADR 0010's fight for this line is
+    // not reopened; widest real case `◆ grilling · hitl` fits at 220px.
     el(
       'text',
       { x: w - 9, y: baseline, class: 'meta', 'text-anchor': 'end', fill: colour, style: `font-size:${META_PX}px` },
       group,
-    ).textContent = `${TYPE_GLYPH[node.type] ?? '·'} ${node.type ?? 'untyped'} · takeable`;
+    ).textContent = `${TYPE_GLYPH[node.type] ?? '·'} ${node.type ?? 'untyped'} · ${ATTEND_LABEL[attendOf(node)]}`;
   }
+}
+
+/**
+ * What a column is called. `rank 3` named the axis; nothing on the live half of the map is
+ * laned by rank any more, so it would name nothing the reader can see.
+ *
+ * The count on the batch is of **takeable** tickets, not of everything in the column: a
+ * claimed ticket sits at wave 0 too — it has no open blocker — and it is not something you
+ * can start.
+ */
+function laneHead(col, lane, batch) {
+  const live = col.filter((it) => it.kind === 'node' && LIVE(it.node));
+  if (!live.length) return { text: 'done', tone: 'muted' };
+  const wave = lane - batch;
+  if (wave === 0) return { text: `start now — ${live.filter((it) => TAKEABLE(it.node)).length} in parallel`, tone: 'go' };
+  if (wave === 1) return { text: `then — ${live.length} waiting`, tone: 'wait' };
+  return { text: `+${wave} — ${live.length} waiting`, tone: 'wait' };
 }
 
 /**
@@ -151,14 +177,27 @@ export function drawGraph(graph, stage, { selected = null, ringed = new Set(), o
 
   const statusOf = new Map(graph.nodes.map((n) => [n.number, n.status]));
   layout.rows.forEach((col, r) => {
-    const collapsed = geo.wid[r] < W;
-    el('text', { x: geo.xs[r], y: 46, class: 'lane-head' }, svg).textContent = collapsed ? `r${r} · done` : `rank ${r}`;
+    const head = laneHead(col, r, layout.batch);
+    el('text', { x: geo.xs[r], y: 46, class: `lane-head ${head.tone}` }, svg).textContent = head.text;
     for (const it of col) {
       if (it.kind !== 'node') continue;
       const g = el('g', { class: 'node', 'data-n': it.node.number, transform: `translate(${it.x},${it.y})` }, nodeLayer);
       drawNode(it.node, g, it.w, it.h);
       if (it.node.number === selected) g.classList.add('sel');
       if (ringed.has(String(it.node.number))) g.classList.add('ringed');
+    }
+    // Sub-heads for the attendance runs, against the first box of each. Only the batch
+    // column has runs — it is the only column `buildLayout` re-sorts — and only the batch
+    // column is being asked *who takes this*.
+    if (r !== layout.batch) return;
+    let last = null;
+    for (const it of col) {
+      if (it.kind !== 'node') continue;
+      const key = attendOf(it.node);
+      if (key === last) continue;
+      el('text', { x: geo.xs[r], y: it.y - 5, class: `grp g-${key}` }, svg).textContent =
+        `${ATTEND_LABEL[key]} · ${col.filter((c) => c.kind === 'node' && attendOf(c.node) === key).length}`;
+      last = key;
     }
   });
 

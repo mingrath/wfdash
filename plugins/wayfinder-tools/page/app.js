@@ -544,7 +544,7 @@ function wake(why) {
   S.refreeze = true;
   if (Date.now() - S.poll.lastSuccess < intervalFor()) {
     // Suppressed as a *poll*, but the order still unfreezes against the counts already
-    // held — otherwise a tab focused inside one interval never re-ranks at all.
+    // held — otherwise a tab focused inside one interval never re-orders at all.
     if (S.route?.kind === 'overview' && S.maps) applyOverviewOrder();
     return;
   }
@@ -552,7 +552,7 @@ function wake(why) {
   poll(why);
 }
 
-/** Re-rank against the counts already held, without spending a query to do it. */
+/** Re-order against the counts already held, without spending a query to do it. */
 function applyOverviewOrder() {
   freezeOrder();
   S.refreeze = false;
@@ -586,7 +586,9 @@ window.WFDASH = () => {
     selected: S.selected,
     dockOpen: S.dockOpen && !$('dock').hidden,
     nodes: S.graph?.nodes.length ?? 0,
-    ranks: S.graph?.nodes.length ? Math.max(...S.graph.nodes.map((n) => n.rank)) + 1 : 0,
+    // Counted off the drawn lane heads rather than off the graph, so it reports the columns
+    // the page produced rather than the arithmetic it was given.
+    lanes: document.querySelectorAll('#stage .lane-head').length,
     fit: svg && vb ? +(svg.getBoundingClientRect().width / Number(vb[2])).toFixed(3) : null,
     ringed: [...S.ringed],
     truncated: S.truncated,

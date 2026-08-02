@@ -17,6 +17,11 @@
 // so had no `claimedAt`; adding the one connection the contract's `claimedAt` requires
 // costs exactly one point. 4 was never a measurement of this query. The contract wins:
 // `claimedAt` is in the graph contract, so the timeline stays and the map route costs 5.
+//
+// Re-measured 2026-08-01 for the overview's attendance split: **overview 60**, map still 5.
+// The whole derivation is under `OVERVIEW_QUERY` — labels are +15 as #73 priced them, the
+// sub-issue ceiling is what the other +15 bought, and dropping one pointless `first:` paid
+// for 30 of it.
 
 import { createHash } from 'node:crypto';
 
@@ -50,8 +55,58 @@ export const MAP_QUERY = `query($o:String!,$r:String!,$n:Int!){
 
 /**
  * Every open wayfinder map you can see, with just enough of each sub-issue to derive the
- * six counts. Cost 30. No ticket identity: a card cannot reach a ticket, and buying that
- * was priced at cost 20→30 and 34KB→77KB per poll.
+ * six counts and the attendance split. **Cost 60**, measured 2026-08-01; it was 30.
+ * No ticket identity: a card cannot reach a ticket, and buying that was priced at cost
+ * 20→30 and 34KB→77KB per poll.
+ *
+ * The `first:` numbers here are not taste, and this query is where the overview's whole
+ * budget is decided, so the arithmetic is written down rather than re-derived by the next
+ * person to touch it.
+ *
+ * **What the cost actually bills.** Measured on the live corpus (25 maps, 316 tickets),
+ * five shapes, cost read off `rateLimit.cost`:
+ *
+ * | shape | cost |
+ * | --- | --- |
+ * | `search:30 sub:50 blocked:30`, no labels — as shipped | **30** |
+ * | `+ labels(first:10)` | **45** |
+ * | `+ labels`, `sub:80` | **72** |
+ * | `+ labels`, `sub:100` | **90** |
+ * | `+ labels(first:2)`, `sub:100` | **90** |
+ *
+ * Those five fit one rule exactly: **cost = ⌊(1 + search + search × sub × C) / 100⌋**,
+ * where `C` is the number of **paginated connections asked per sub-issue**. A connection
+ * asking `first: n ≤ 100` bills one request whatever `n` is — which is why `labels(first:2)`
+ * and `labels(first:10)` cost the same, and why `blockedBy(first:30)` is still free. The
+ * sub-issue ceiling is the one `first:` that is *not* free: every sub-issue is multiplied by
+ * `C`, so at `search: 30` each ten tickets of headroom costs `0.3 × C` points.
+ * [#73](https://github.com/mingrath/wfdash-dev/issues/73) is right that trimming a `first:`
+ * saves nothing — but only for the inner connections it measured. It is wrong for `sub`.
+ *
+ * **`assignees { totalCount }` drops the `first: 1`, and that is worth 30 points.** The
+ * argument bought nothing: `totalCount` is a scalar on the connection and needs no page, so
+ * `assignees(first: 1)` was paying a full request per sub-issue for a page nobody read.
+ * Removing it takes `C` from 3 to 2 — measured `sub:80` 72 → 48, with the derived
+ * `claimed` count identical (222 assigned tickets both ways). It is the whole reason the
+ * ceiling below is affordable.
+ *
+ * `subIssues(first: 100)` — `MOOD-diagnosis-new#156` holds **62** and held 31 when
+ * ADR 0011 raised this to 40, 36 when ADR 0012 raised it to 50. A ceiling outgrown twice
+ * does not want tuning a third time, and **100 is not a choice: it is the maximum GitHub
+ * accepts.** `first: 120` returns `EXCESSIVE_PAGINATION` with every map `null` — and still
+ * bills 72. So this is the last time the number can move; the next map past 100 forces
+ * pagination, which is a different decision.
+ *
+ * `labels(first: 10)` — matches `MAP_QUERY`, so `attendanceOf` and `typeOf` read the same
+ * list on both routes. Free to widen and free to narrow, per the rule above.
+ *
+ * **The poll budget, re-run against 60** (ADR 0012 settled it at cost 30):
+ * the overview at 120s spends **60 × 30 = 1800/hour, 36% of the 5000-point budget**; the map
+ * route at 15s and cost 5 spends 1200. Both open is **3000/hour, 60%** — up from 42%, still
+ * inside, and still far from a limit the dashboard could inflict on itself. 15 seconds here
+ * would be 14,400/hour, so ADR 0012's central finding survives the re-pricing intact: this
+ * route cannot be polled like the map route at any shape. What has narrowed is the room left
+ * for the agent sessions doing the real work — 40% instead of 58%.
  */
 export const OVERVIEW_QUERY = `query($q:String!){
   search(type: ISSUE, query: $q, first: 30) {
@@ -60,11 +115,12 @@ export const OVERVIEW_QUERY = `query($q:String!){
     nodes { ... on Issue {
       number title url updatedAt
       repository { nameWithOwner }
-      subIssues(first: 50) {
+      subIssues(first: 100) {
         totalCount
         nodes {
           number state stateReason
-          assignees(first: 1) { totalCount }
+          assignees { totalCount }
+          labels(first: 10) { totalCount nodes { name } }
           blockedBy(first: 30) { totalCount nodes { state } }
         }
       }

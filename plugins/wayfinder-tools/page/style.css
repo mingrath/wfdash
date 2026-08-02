@@ -140,12 +140,31 @@ a { color: #58a6ff; }
   letter-spacing: 0.05em;
   text-transform: uppercase;
 }
+/* The batch head is the one line on the map that tells you to do something, so it is the
+   one that leaves the uppercase register: sentence case at 12.5px reads as a sentence and
+   not as a lane label. Green is `--frontier` — the same green the boxes under it wear. */
+.lane-head.go {
+  fill: var(--frontier);
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: none;
+}
+.lane-head.wait { fill: var(--blocked); }
+.lane-head.muted { fill: #4d545c; }
+/* Sub-heads over the runs inside the batch column. Meta size, so they sit under the lane
+   head rather than beside it in weight, and uppercased here rather than in the string —
+   `HITL` / `AFK` is how an acronym wants to be read anyway. */
+.grp { fill: var(--dim); font-size: 9.5px; letter-spacing: 0.07em; text-transform: uppercase; }
+.grp.g-hitl { fill: #f0a04b; }
+.grp.g-afk { fill: #58a6ff; }
+.grp.g-unknown { fill: #6e7681; }
 .node.sel .frame { stroke: #fff; stroke-width: 2.6; stroke-opacity: 1; }
 /* The ring: neutral, accumulating, cleared by a click and by nothing else. */
 .node.ringed .frame { stroke: #e6edf3; stroke-width: 2.5; stroke-opacity: 1; }
 .node.hl .frame { stroke: var(--claimed); stroke-width: 2.4; stroke-opacity: 1; }
 /* Layout is never pinned and there is no transition: re-layout is an honest,
-   instantaneous redraw. The 200ms root-group transform was watched during a real 4→6 rank
+   instantaneous redraw. The 200ms root-group transform was watched during a real 4→6 lane
    re-layout and is worse than a teleport — it renders the new, wider drawing at the *old*
    scale throughout, clipped on two edges, while the nodes have already jumped. */
 
@@ -341,10 +360,18 @@ a { color: #58a6ff; }
 .bar { display: flex; height: 6px; border-radius: 3px; overflow: hidden; background: #21262d; flex: 1; }
 .bar i { display: block; height: 100%; }
 .num { font-size: 12.5px; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.num.take { color: var(--frontier); font-weight: 600; }
-.num.none { color: var(--dim); }
 .num.done { color: var(--resolved); font-weight: 600; }
 .num.empty { color: var(--dim); font-style: italic; }
+/* The presence row. Green is deliberately absent: it is the bar's word for *takeable* and
+   nothing else, and this row counts work that cannot be started. `hitl` takes the page's
+   plain text colour, `afk` a step down, a `0` a step below that (9 of 17 live maps have
+   one), and `unmarked` the same dim as `afk` — a footnote, not a warning. Amber was tried
+   and became the loudest text on the page. */
+.num.live .h { color: var(--text); font-weight: 600; }
+.num.live .a { color: #768390; }
+.num.live .unk { color: var(--dim); }
+.num.live .zero { color: #5a626b; }
+.num.live .sep { color: #3d444d; }
 .delta { color: var(--text); font-size: 11.5px; font-variant-numeric: tabular-nums; }
 
 /* ============================================================ the status bar */

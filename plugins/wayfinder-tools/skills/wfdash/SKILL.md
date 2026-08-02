@@ -48,8 +48,10 @@ sitting at the console.
 ## What the user sees
 
 - **The overview** (`/`) — every wayfinder map they can see, across every repo, as a grid of
-  cards sorted takeable-first. Each card says in a word whether there is anything to take:
-  `N takeable`, `none takeable`, `✓ all N resolved`, or `no tickets yet`.
+  cards, newest-edited first inside `takeable → stalled → uncharted → finished`. A live card
+  counts every open ticket by whether it needs the user: `7 hitl · 5 afk`, plus `· K unmarked`
+  when anything is unclassified. A finished map says `✓ all N resolved` and an uncharted one
+  `no tickets yet`. Whether anything can be *started* is the bar's green segment, not a word.
 - **The map view** (`/m/<owner>/<repo>/<number>`) — one map as a layered dependency DAG,
   rank as a column, left to right, with a masthead carrying the destination and a dock
   carrying prose. Click a ticket for its question, its dependencies by name, and its whole

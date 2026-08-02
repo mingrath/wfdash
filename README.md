@@ -73,12 +73,42 @@ The dashboard is running either way. `WFDASH_NO_BROWSER=1` forces it.
 
 ## What you get
 
-- **The overview** — every map you can see, as cards sorted takeable-first. Each says in a
-  word whether there is anything to take: `3 takeable`, `none takeable`, `✓ all 9 resolved`.
-- **The map view** — one map as a layered DAG, rank as a column, left to right. Click a
-  ticket for its question, its blockers by name, and its whole comment thread.
+- **The overview** — every map you can see, as cards, newest-edited first inside
+  `takeable → stalled → uncharted → finished`. Each live card counts its open tickets by
+  whether they need you — `7 hitl · 5 afk` — and its bar's green segment says whether
+  anything can be started right now. A finished map says `✓ all 9 resolved`.
+- **The map view** — one map as a DAG, laid out left to right by **how many rounds of
+  waiting** each open ticket is from being takeable, so the first column is what you could
+  start right now. Resolved tickets collapse into a block on the left. Click a ticket for its
+  question, its blockers by name, and its whole comment thread.
 
 Both pages poll, so claiming a ticket in your terminal shows up without a reload.
+
+## The charting rules, and agents that are not Claude Code
+
+The plugin carries a second thing: a short set of standing rules for **charting** a map —
+mark every ticket `hitl` or `afk` as you create it, when a blocking arrow is warranted and
+why two tickets touching the same files do not need one, and how to chart a sitting so you
+are never left with nothing to answer, or with nothing running while you are away. In Claude
+Code a plugin hook injects them into every `/wayfinder` session, so the install above is all
+there is to it.
+
+Hooks are a Claude Code feature. Everywhere else the same rules ship as a skill called
+`wf-charting`, and **`wfdash install` writes it alongside the dashboard skill** — if you
+installed from npm you already have it, in the same roots and reported on its own line:
+
+    wrote     ~/.agents/skills/wfdash/SKILL.md          Codex CLI, Cursor and 2 more
+    wrote     ~/.agents/skills/wf-charting/SKILL.md     Codex CLI, Cursor and 2 more
+
+It can also be taken on its own, without the dashboard:
+
+    npx skills add mingrath/wfdash        # then choose wf-charting
+
+Yes, that command reads as installing a dashboard — this repo is one effort with three faces,
+and that is the third. Every copy is the *same file* the hook injects, fanned out from one
+source at release, so the skill and the hook cannot drift into saying different things.
+
+Nothing here forks, copies, patches, or replaces the `/wayfinder` skill itself.
 
 ## Which agents this works in
 

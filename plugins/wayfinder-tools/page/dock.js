@@ -122,12 +122,24 @@ export function renderTicketPanel(graph, node, scroller, { onSelect, onHover, ne
       .map((e) => graph.nodes.find((n) => n.number === (dir === 'up' ? e.blocker : e.blocked)))
       .filter(Boolean);
 
+  // `status · type · attendance · @assignee · #n ↗` — three classifications, then two
+  // values. Attendance takes the third `.pill` rather than the plain 11.5px the values use,
+  // and it takes the slot `rank N` held until ADR 0018 stopped drawing a rank lane anywhere.
+  //
+  // It draws on **every** status, not live-only: the map's strip and its batch sub-heads are
+  // frontier-only, so attendance reaches ~42 of the fleet's 519 boxes and the dock is the
+  // sole surface for the other ~92%. 381 of those 519 tickets are closed.
+  //
+  // Grey, matching type — ADR 0007's *status is the colour*, and a second coloured pill
+  // competes with the one signal the row exists to carry. Not fused into the type pill
+  // either: #70 made attendance its own axis and one pill holding two axes draws them as one
+  // fact. `unmarked` prints rather than vanishing, exactly as `untyped` does beside it.
   let html = `<div class="ph">
     <h2>${esc(node.title)}</h2>
     <div class="m">
       <span class="pill" style="color:${STATUS_COLOR[node.status]}">${esc(node.status)}</span>
       <span class="pill" style="color:#8b949e">${TYPE_GLYPH[node.type] ?? '·'} ${esc(node.type ?? 'untyped')}</span>
-      <span>rank ${node.rank}</span>
+      <span class="pill" style="color:#8b949e">${esc(node.attendance ?? 'unmarked')}</span>
       ${node.assignee ? `<span>@${esc(node.assignee)}</span>` : ''}
       <a href="${esc(node.url)}" target="_blank" rel="noreferrer noopener">#${node.number} ↗</a>
       <button class="close" data-close title="close the dock">×</button>

@@ -1,0 +1,28 @@
+{
+  "description": "Injects the charting rules as additional context on a /wayfinder session — attendance marking, the blocking-arrow rule, and the HITL and runway floors. Both entry paths are covered: a human typing the command, and an agent invoking the skill. The skill itself is never read, edited, or replaced.",
+  "hooks": {
+    "UserPromptExpansion": [
+      {
+        "matcher": "wayfinder",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/charting.mjs\" UserPromptExpansion"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Skill",
+        "hooks": [
+          {
+            "type": "command",
+            "if": "Skill(wayfinder)",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/charting.mjs\" PreToolUse"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -149,6 +149,48 @@ export async function checkAuth() {
   }
 }
 
+// ------------------------------------------------------------------ what the labels say
+
+const TYPE_PREFIX = 'wayfinder:';
+
+/**
+ * The four ticket types, as a **closed set** rather than a prefix test.
+ *
+ * The prefix test is what was here before, and it took the *first* label beginning
+ * `wayfinder:` — so a ticket's type was hostage to GitHub's label ordering, and any new
+ * `wayfinder:` label anywhere in the fleet would have competed for the slot. Attendance
+ * dodges that by being unprefixed, but the hole stays open until the set is closed.
+ */
+export const TYPES = new Set(['grilling', 'prototype', 'research', 'task']);
+
+/** A ticket's type, and `null` when it carries none — an absence, never a default. */
+export function typeOf(names) {
+  for (const name of names) {
+    if (!name.startsWith(TYPE_PREFIX)) continue;
+    const type = name.slice(TYPE_PREFIX.length);
+    if (TYPES.has(type)) return type;
+  }
+  return null;
+}
+
+/**
+ * Attendance — `'hitl' | 'afk' | null`, three equal values, off the two bare labels a
+ * sub-issue already ships in the `labels(first:10)` the type is read from. Free.
+ *
+ * `null` means **unclassified** and is permanent, never a synonym for `afk`: a stranger who
+ * installs wfdash and never adopts the labels is the steady state, and because the marks
+ * have to be *applied*, every newly-charted ticket is unmarked from creation until someone
+ * marks it. Both are recurring, neither is a migration window.
+ *
+ * `hitl` is tested first, so it wins whichever order GitHub returns a doubly-marked
+ * ticket's labels in — being wrongly summoned is recoverable, being wrongly skipped is not.
+ */
+export function attendanceOf(names) {
+  if (names.includes('hitl')) return 'hitl';
+  if (names.includes('afk')) return 'afk';
+  return null;
+}
+
 // ------------------------------------------------------------------ status and rank
 
 /** The six statuses, first match wins. One vocabulary, shared with the overview's counts. */
@@ -173,6 +215,21 @@ export const COUNT_KEY = {
 };
 
 export const emptyCounts = () => ({ resolved: 0, outOfScope: 0, undermined: 0, blocked: 0, claimed: 0, frontier: 0 });
+
+/**
+ * The four statuses that are **live work** — open, whatever is holding it up.
+ *
+ * The overview's attendance split is counted over these rather than over the frontier, and
+ * that is ADR 0017's central measurement rather than a convenience: read over the frontier
+ * alone, three maps in 25 say *everything left is AFK* and two of them are lying —
+ * `clinical-rag-ade#1` shows `0 hitl · 1 afk` takeable while holding **7 hitl** tickets one
+ * blocker back. The frontier hides the other way too, so four maps with live work say
+ * nothing at all. The card's question is *which effort do I sit down with*, which is about
+ * the effort and not about this instant.
+ */
+export const LIVE_STATUSES = new Set(['frontier', 'claimed', 'blocked', 'undermined']);
+
+export const emptyAttendance = () => ({ hitl: 0, afk: 0, unknown: 0 });
 
 /**
  * Longest path: 0 without blockers, else one past the deepest blocker, so blockers always
@@ -383,10 +440,14 @@ export function buildGraph(data, { owner, repo, number } = {}) {
     truncCheck(truncated, `#${s.number}.labels`, s.labels);
     truncCheck(truncated, `#${s.number}.assignees`, s.assignees);
     const assignee = s.assignees?.nodes?.[0]?.login ?? null;
+    // Two independent axes off one label list: what kind of work it is, and whether the dev
+    // has to be in the chair for it.
+    const names = (s.labels?.nodes ?? []).map((l) => l.name);
     return {
       number: s.number,
       title: s.title,
-      type: (s.labels?.nodes ?? []).map((l) => l.name).find((n) => n.startsWith('wayfinder:'))?.slice('wayfinder:'.length) ?? null,
+      type: typeOf(names),
+      attendance: attendanceOf(names),
       status: statusOf(s),
       assignee,
       // The last ASSIGNED_EVENT, and null when nobody holds it — a stale event from a
@@ -469,8 +530,8 @@ export async function viewerLogin() {
 }
 
 /**
- * Every open wayfinder map you can see, as six integers each. A different, smaller shape —
- * not an array of graphs. A ticket is deliberately not reachable from a card.
+ * Every open wayfinder map you can see, as six integers and three more. A different,
+ * smaller shape — not an array of graphs. A ticket is deliberately not reachable from a card.
  *
  * The default expression names the authenticated account, so the page is right on the first
  * run for whoever installed it. `WFDASH_SEARCH` overrides it, and that is not a convenience:
@@ -497,9 +558,21 @@ export function buildOverview(data) {
   const maps = (search.nodes ?? []).map((m) => {
     truncCheck(truncated, `${m.repository?.nameWithOwner}#${m.number}.subIssues`, m.subIssues);
     const counts = emptyCounts();
+    // The attendance of every live ticket, in #70's three states. `unknown` is counted, not
+    // folded into either side: the two numbers have to sum to the live work or the card is
+    // quietly wrong, which is the failure ADR 0011 said to design out rather than price
+    // around. #77's "where anything is *forced* to choose, unmarked behaves as hitl" does
+    // not apply — the card is not forced, it has room for a third clause.
+    const attendance = emptyAttendance();
     for (const s of m.subIssues?.nodes ?? []) {
       truncCheck(truncated, `${m.repository?.nameWithOwner}#${m.number}/#${s.number}.blockedBy`, s.blockedBy);
-      counts[COUNT_KEY[statusOf(s)]]++;
+      truncCheck(truncated, `${m.repository?.nameWithOwner}#${m.number}/#${s.number}.labels`, s.labels);
+      const status = statusOf(s);
+      counts[COUNT_KEY[status]]++;
+      if (!LIVE_STATUSES.has(status)) continue;
+      // The same derivation as the map route, off the same `labels(first:10)` — one
+      // function, so the two routes cannot drift on which label wins.
+      attendance[attendanceOf((s.labels?.nodes ?? []).map((l) => l.name)) ?? 'unknown']++;
     }
     return {
       repo: m.repository?.nameWithOwner ?? '',
@@ -508,6 +581,7 @@ export function buildOverview(data) {
       url: m.url,
       updatedAt: m.updatedAt,
       counts,
+      attendance,
     };
   });
 

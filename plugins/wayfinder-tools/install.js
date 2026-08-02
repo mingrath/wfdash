@@ -13,9 +13,10 @@
 //     An installer that writes both levels behaves differently on Amp than on everything
 //     else, so it writes one.
 //   - **Detect, never prompt.** An agent running this unattended would hang forever.
-//   - **`SKILL.md` and nothing else.** The launcher `wfdash.mjs` exists for the Claude Code
-//     plugin, where `bin/` is two levels up; copied anywhere else its import resolves to
-//     nothing, and anywhere else `wfdash` is on PATH by construction.
+//   - **No launcher.** `wfdash.mjs` exists for the Claude Code plugin, where `bin/` is two
+//     levels up; copied anywhere else its import resolves to nothing, and anywhere else
+//     `wfdash` is on PATH by construction. This is a rule about a *file that resolves a
+//     specifier*, not a file count — see `SKILLS`.
 
 import { mkdir, readFile, writeFile, readdir, lstat, readlink } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
@@ -90,17 +91,54 @@ export function agents() {
 // ------------------------------------------------------------------ the source
 
 /**
- * Where the skill being installed comes from. In the published package it sits at
- * `skills/wfdash/`; in this checkout the published copy is the one under `publish/`, which
- * is deliberate — a development install writes exactly the bytes a release would, so the
- * test seam exercises the real file rather than a stand-in.
+ * **The two skills this installer writes**, in report order.
+ *
+ * `wfdash` is the dashboard. `wf-charting` is the charting rules — the same bytes the
+ * `wayfinder-tools` plugin's hooks inject on a `/wayfinder` session in Claude Code, carried
+ * as a skill everywhere hooks do not run. That is *every agent this installer exists for*,
+ * so shipping only the first is the exact gap `wf-charting` was created to close, reopened
+ * at the delivery step.
+ *
+ * `wf-charting` is the one skill that is **two files**: its `SKILL.md` is a pointer, and
+ * `charting.md` beside it is the rules. That does not reopen "the installer writes
+ * `SKILL.md` and nothing else" — that rule is about `wfdash.mjs`, a *launcher* whose
+ * `../bin` import resolves to nothing outside the plugin. `charting.md` imports nothing and
+ * resolves nothing; it is inert markdown named by a relative path that is correct wherever
+ * the pair is written together. The rule's reason does not reach it.
+ *
+ * The pair stays **flat** — two siblings, no subdirectory — because Zed and Continue
+ * discover immediate subdirectories of the skills root only, and a nested file would put
+ * the rules where they cannot see them.
  */
-const SOURCES = ['skills/wfdash', 'publish/plugins/wayfinder-tools/skills/wfdash'];
+export const SKILLS = [
+  { name: 'wfdash', extra: [] },
+  { name: 'wf-charting', extra: ['charting.md'] },
+];
+
+/**
+ * Where each file comes from, most-published first.
+ *
+ * In the released package the tree is the plugin's, so `wfdash` sits at `skills/wfdash/` and
+ * `wf-charting` at `wf-charting/` beside it. In this checkout neither exists yet: the
+ * authored `SKILL.md`s are under `publish/`, and `charting.md` is the single authored copy
+ * at `charting/charting.md` that the release fans out. Falling through to those is
+ * deliberate — a development install writes exactly the bytes a release would, so the test
+ * seam exercises the real files rather than stand-ins.
+ */
+const SOURCES = {
+  wfdash: {
+    'SKILL.md': ['skills/wfdash/SKILL.md', 'publish/plugins/wayfinder-tools/skills/wfdash/SKILL.md'],
+  },
+  'wf-charting': {
+    'SKILL.md': ['wf-charting/SKILL.md', 'publish/wf-charting/SKILL.md'],
+    'charting.md': ['wf-charting/charting.md', 'charting/charting.md'],
+  },
+};
 const MANIFESTS = ['package.json', 'publish/plugins/wayfinder-tools/package.json'];
 
-const firstExisting = (candidates, file) => {
+const firstExisting = (candidates) => {
   for (const c of candidates) {
-    const path = join(HERE, c, ...(file ? [file] : []));
+    const path = join(HERE, c);
     if (existsSync(path)) return path;
   }
   return null;
@@ -128,11 +166,22 @@ export async function version() {
 export const STAMP = /^<!-- wfdash (\S+) — installed by `wfdash install`/m;
 export const stampFor = (v) => `<!-- wfdash ${v} — installed by \`wfdash install\`; rerun it to update -->`;
 
-/** The skill as it will be written: the shipped bytes plus one line naming the version. */
-export async function payload(v) {
-  const src = firstExisting(SOURCES, 'SKILL.md');
-  if (!src) throw new Error('no skills/wfdash/SKILL.md beside this installer — nothing to install');
-  return `${(await readFile(src, 'utf8')).trimEnd()}\n\n${stampFor(v)}\n`;
+/**
+ * A skill as it will be written: `file -> bytes`.
+ *
+ * Only `SKILL.md` is stamped. The stamp is what tells our copy from someone else's and what
+ * the stale check reads, and both of those questions are asked of the skill, not of each of
+ * its files — a second stamp would be a second thing to keep in step for no reader.
+ */
+export async function payload(v, skill) {
+  const out = {};
+  for (const file of ['SKILL.md', ...skill.extra]) {
+    const src = firstExisting(SOURCES[skill.name][file]);
+    if (!src) throw new Error(`no ${skill.name}/${file} beside this installer — nothing to install`);
+    const text = await readFile(src, 'utf8');
+    out[file] = file === 'SKILL.md' ? `${text.trimEnd()}\n\n${stampFor(v)}\n` : text;
+  }
+  return out;
 }
 
 // ------------------------------------------------------------------ Claude Code
@@ -215,8 +264,8 @@ const linkTarget = (path) =>
     .then((s) => (s.isSymbolicLink() ? readlink(path) : null))
     .catch(() => null);
 
-async function writeOne(home, target, body, { force }) {
-  const dir = join(home, target.root, 'wfdash');
+async function writeOne(home, target, skill, bodies, { force }) {
+  const dir = join(home, target.root, skill.name);
   const file = join(dir, 'SKILL.md');
   const where = rel(home, file);
 
@@ -248,11 +297,21 @@ async function writeOne(home, target, body, { force }) {
   if (existing !== null && !STAMP.test(existing) && !force) {
     return { verb: 'skipped', where, why: 'a SKILL.md is there that wfdash did not write; `--force` replaces it' };
   }
-  if (existing === body) return { verb: 'unchanged', where };
+
+  // `unchanged` is a claim about the whole skill, not about its `SKILL.md`. A stamp that
+  // already matches while `charting.md` beside it is missing or stale is exactly the state
+  // a rerun exists to repair, so every file is compared before the verb is chosen.
+  let same = existing === bodies['SKILL.md'];
+  for (const extra of Object.keys(bodies)) {
+    if (extra === 'SKILL.md' || !same) continue;
+    const at = join(dir, extra);
+    same = existsSync(at) && (await readFile(at, 'utf8').catch(() => null)) === bodies[extra];
+  }
+  if (same) return { verb: 'unchanged', where };
 
   try {
     await mkdir(dir, { recursive: true });
-    await writeFile(file, body);
+    for (const [name, body] of Object.entries(bodies)) await writeFile(join(dir, name), body);
   } catch (e) {
     return { verb: 'failed', where, why: e.code ?? e.message };
   }
@@ -276,10 +335,12 @@ async function writeOne(home, target, body, { force }) {
 export async function staleInstalls({ home = homedir(), v } = {}) {
   const found = [];
   for (const root of ROOTS) {
-    const file = join(home, root, 'wfdash', 'SKILL.md');
-    if (!existsSync(file)) continue;
-    const stamp = STAMP.exec(await readFile(file, 'utf8').catch(() => ''));
-    if (stamp && stamp[1] !== v) found.push({ where: rel(home, file), version: stamp[1] });
+    for (const skill of SKILLS) {
+      const file = join(home, root, skill.name, 'SKILL.md');
+      if (!existsSync(file)) continue;
+      const stamp = STAMP.exec(await readFile(file, 'utf8').catch(() => ''));
+      if (stamp && stamp[1] !== v) found.push({ where: rel(home, file), version: stamp[1] });
+    }
   }
   return found;
 }
@@ -308,7 +369,7 @@ const summarise = (names, keep = 3) =>
  */
 export async function install({ home = homedir(), only = null, force = false, all = false, out = console.log } = {}) {
   const v = await version();
-  const body = await payload(v);
+  const bodies = Object.fromEntries(await Promise.all(SKILLS.map(async (s) => [s.name, await payload(v, s)])));
   const targets = await plan({ home, only });
 
   if (only && !targets.some((t) => t.slug === only)) {
@@ -319,22 +380,37 @@ export async function install({ home = homedir(), only = null, force = false, al
 
   const rows = [];
   const absent = [];
+  // A target is a place; a row is a skill written to one. They stopped being the same thing
+  // when the second skill arrived, so the header counts targets and the body lists rows.
+  let reached = 0;
+  let considered = 0;
   for (const target of only ? targets.filter((t) => t.slug === only) : targets) {
     const detail = target.shared ? summarise(target.detail.split(', ')) : target.detail;
     if (target.skip) {
+      considered++;
       rows.push({ verb: 'skipped', where: `~/${target.root}/`, why: target.skip, detail: target.shared ? '' : detail });
       continue;
     }
     if (!target.write) {
       if (!absent.includes(target.name)) absent.push(target.name);
-      if (all) rows.push({ verb: 'absent', where: `~/${target.probe}`, why: 'not on this machine', detail });
+      if (all) {
+        considered++;
+        rows.push({ verb: 'absent', where: `~/${target.probe}`, why: 'not on this machine', detail });
+      }
       continue;
     }
-    rows.push({ ...(await writeOne(home, target, body, { force })), detail });
+    considered++;
+    let here = 0;
+    for (const skill of SKILLS) {
+      const row = { ...(await writeOne(home, target, skill, bodies[skill.name], { force })), detail };
+      if (['wrote', 'updated', 'unchanged'].includes(row.verb)) here++;
+      rows.push(row);
+    }
+    if (here) reached++;
   }
 
   const landed = rows.filter((r) => ['wrote', 'updated', 'unchanged'].includes(r.verb));
-  out(`wfdash ${v} — ${landed.length ? `installed into ${landed.length} of ${rows.length} target${rows.length === 1 ? '' : 's'}` : 'installed nowhere'}`);
+  out(`wfdash ${v} — ${landed.length ? `installed into ${reached} of ${considered} target${considered === 1 ? '' : 's'}` : 'installed nowhere'}`);
   out('');
   const wid = Math.min(48, Math.max(0, ...rows.map((r) => r.where.length)));
   for (const r of rows) {

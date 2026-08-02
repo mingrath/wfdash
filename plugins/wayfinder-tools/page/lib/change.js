@@ -57,7 +57,7 @@ export const mapKey = (m) => `${m.repo}#${m.number}`;
  * is already the card's entire content, and it moves on 782 of 793 count-moving events.
  *
  * The 11 it misses are a consequence rather than a gap: eight are a claim on a *blocked*
- * ticket, and `blocked` outranks `claimed`, so that claim is invisible to `counts` by
+ * ticket, and `blocked` beats `claimed`, so that claim is invisible to `counts` by
  * construction — and invisible on the card too, so the signal loses nothing the drawing
  * had.
  */
@@ -90,21 +90,36 @@ const total = (c) => COUNT_KEYS.reduce((s, k) => s + (c[k] ?? 0), 0);
 export const isDone = (m) => total(m.counts) > 0 && m.counts.resolved + m.counts.outOfScope === total(m.counts);
 export const isEmpty = (m) => total(m.counts) === 0;
 export const totalTickets = (m) => total(m.counts);
+/** Open work, however it is held up — the scope the attendance split is counted over. */
+export const liveTickets = (m) => m.counts.frontier + m.counts.claimed + m.counts.blocked + m.counts.undermined;
 
 /**
- * Frontier count descending, ties breaking `isDone` → `isEmpty` → `updatedAt`, so the
- * reading order is **takeable → stalled → uncharted → finished**.
+ * The four bands, in reading order: **takeable → stalled → uncharted → finished**.
  *
  * Uncharted above finished on purpose: charting is work, and a map that still needs it
  * belongs nearer the top than one that needs nothing.
  */
+export const bandOf = (m) => (isEmpty(m) ? 2 : isDone(m) ? 3 : m.counts.frontier ? 0 : 1);
+
+/**
+ * **Recency, banded** — newest-edited first inside each band. ADR 0017 replaces ADR 0011's
+ * frontier-count order with this.
+ *
+ * Pure last-modified was asked for and is free, since `updatedAt` is already on the wire,
+ * and it fails on the corpus exactly as ADR 0011 predicted it would: **three finished maps
+ * take slots 4, 5 and 6**, and `raglecture#53` — 11 hitl, the most presence-hungry map in
+ * the fleet — falls to 22 of 25. The bands are what stop that, and they cost one term.
+ *
+ * Sorting on the printed `hitl` count was the obvious alternative and lost twice over:
+ * ranked on the *live* count it lifts two maps with nothing startable to slots 8–9, and
+ * ranked on the *takeable* count while printing the live one it becomes a **hidden key** —
+ * `4 hitl` outranking `6 hitl` for no visible reason, the same defect ADR 0011 recorded in
+ * the fixed-width bar. Banded recency puts every card that can be acted on in slots 1–13
+ * and stays a rule the reader can state.
+ */
 export function sortMaps(maps) {
   return [...maps].sort(
-    (a, b) =>
-      b.counts.frontier - a.counts.frontier ||
-      Number(isDone(a)) - Number(isDone(b)) ||
-      Number(isEmpty(a)) - Number(isEmpty(b)) ||
-      String(b.updatedAt ?? '').localeCompare(String(a.updatedAt ?? '')),
+    (a, b) => bandOf(a) - bandOf(b) || String(b.updatedAt ?? '').localeCompare(String(a.updatedAt ?? '')),
   );
 }
 
