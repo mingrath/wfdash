@@ -9,7 +9,7 @@
     {
       "name": "wayfinder-tools",
       "source": "./plugins/wayfinder-tools",
-      "description": "Serve wayfinder maps held in GitHub Issues as a local browser dashboard — one map drawn as a dependency DAG, plus an overview of every map across every repo."
+      "description": "See what needs you now and what can run while you're away — your maps as a browser dashboard, plus hitl/afk charting rules for every session."
     }
   ]
 }

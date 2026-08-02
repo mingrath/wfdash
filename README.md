@@ -1,56 +1,48 @@
-# wfdash
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/wfdash-lockup-dark.svg">
+  <img alt="wfdash" src="docs/wfdash-lockup-light.svg" width="300">
+</picture>
 
-![the map view](docs/map-view.png)
+Your wayfinder maps as a local browser dashboard — see what needs you now, and what can run
+while you're away.
 
-A wayfinder map is a GitHub issue whose sub-issues are its tickets, wired together with
-native issue dependencies. GitHub renders that as a flat list, so the shape of an effort —
-what is finished, what is takeable right now, what is waiting on what — is not visible
-anywhere. `wfdash` serves it as a local browser dashboard: one map drawn as a dependency
-DAG, plus an overview of every map you can see, across every repo.
-
-Read-only, zero npm dependencies, no build step.
+![the map, before and after the human work is done](docs/demo.gif)
 
 ## Install
 
-    npm i -g @mingrath/wfdash
-    wfdash install
+**Which agent are you running?**
 
-The first line gives you the `wfdash` command. The second copies the skill into every agent
-on your machine that reads one, and tells you what it wrote and what it skipped:
+| | Run | You get |
+|---|---|---|
+| **Claude Code** | `/plugin marketplace add mingrath/wfdash`<br>`/plugin install wayfinder-tools@mingrath`<br>`/reload-plugins` | **the dashboard** — your maps as a DAG in a browser<br>**the charting rules** — injected into every `/wayfinder` session by a hook |
+| **Any other agent** that reads a `SKILL.md` | `npm i -g @mingrath/wfdash`<br>`wfdash install` | **the dashboard** — as the `wfdash` command, plus a skill so your agent can run it for you<br>**the charting rules** — as a `wf-charting` skill, written into every agent on your machine that reads one |
 
-    wfdash 0.1.1 — installed into 2 of 3 targets
+Both channels are cut from the same tree at the same version, and the rules are the *same
+file* either way, copied from one source at release, so the hook and the skill cannot drift.
 
-      wrote     ~/.agents/skills/wfdash/SKILL.md  Codex CLI, Cursor, Gemini CLI and 2 more
-      skipped   ~/.claude/skills/                 Claude Code — the wayfinder-tools plugin is already installed
-      wrote     ~/.kiro/skills/wfdash/SKILL.md    Kiro
+`wfdash install` tells you what it wrote and what it skipped:
+
+    wfdash 0.1.4 — installed into 2 of 3 targets
+
+      wrote     ~/.agents/skills/wfdash/SKILL.md       Codex CLI, Cursor, Gemini CLI and 2 more
+      wrote     ~/.agents/skills/wf-charting/SKILL.md  Codex CLI, Cursor, Gemini CLI and 2 more
+      skipped   ~/.claude/skills/                      Claude Code — the wayfinder-tools plugin is already installed
+      wrote     ~/.kiro/skills/wfdash/SKILL.md         Kiro
 
       not on this machine: Continue.dev, Windsurf, Qwen Code, JetBrains Junie, Trae, Kilo Code
 
-It writes at the user level only, one file per agent — `SKILL.md` and nothing else — and it
-never overwrites a `wfdash` skill it did not write. Run it again after upgrading; a second
-run is safe and reports `unchanged`. `--agent <name>` installs into one agent whether or not
-it is on this machine, and `--all` lists the ones that are not.
+It writes at the user level only, one file per skill, and never overwrites a skill it did
+not write. Run it again after upgrading; a second run is safe and reports `unchanged`.
+`--agent <name>` installs into one agent whether or not it is on this machine, and `--all`
+lists the ones that are not.
 
-**Claude Code users can skip npm entirely** and take the plugin instead:
+**Just the charting rules, without the dashboard:**
 
-    /plugin marketplace add mingrath/wfdash
-    /plugin install wayfinder-tools@mingrath
-    /reload-plugins
+    npx skills add mingrath/wfdash/wf-charting --global
 
-Both channels are cut from the same tree at the same version. If you have both, `wfdash
-install` leaves Claude Code alone and says so — the plugin already carries the skill.
-
-## Requires
-
-- **`gh` on `PATH` and authenticated** — `gh auth login`. wfdash shells out to it from the
-  server, so it inherits your existing auth and no token ever reaches the browser.
-- **Node 18 or newer** — ES modules and a built-in `fetch`. Nothing else; there are no
-  dependencies to install.
-- **An agent that loads a `SKILL.md`**, or none at all — `wfdash` is a normal command and
-  works on its own from a terminal.
-- **Maps to look at.** wfdash reads one convention: an issue labelled `wayfinder:map`, its
-  tickets as GitHub sub-issues, blocking as native issue dependencies. It is built for maps
-  charted by the `/wayfinder` skill.
+That installs `wf-charting` into `~/.agents/skills/`, which around two dozen agents read.
+Both flags are load-bearing: the subpath takes this one skill rather than both, and
+`--global` writes to your home rather than into the current directory.
 
 ## Use
 
@@ -82,33 +74,31 @@ The dashboard is running either way. `WFDASH_NO_BROWSER=1` forces it.
   start right now. Resolved tickets collapse into a block on the left. Click a ticket for its
   question, its blockers by name, and its whole comment thread.
 
+![the map view](docs/map-view.png)
+
 Both pages poll, so claiming a ticket in your terminal shows up without a reload.
 
-## The charting rules, and agents that are not Claude Code
+## Requires
 
-The plugin carries a second thing: a short set of standing rules for **charting** a map —
-mark every ticket `hitl` or `afk` as you create it, when a blocking arrow is warranted and
-why two tickets touching the same files do not need one, and how to chart a sitting so you
-are never left with nothing to answer, or with nothing running while you are away. In Claude
-Code a plugin hook injects them into every `/wayfinder` session, so the install above is all
-there is to it.
+- **`gh` on `PATH` and authenticated** — `gh auth login`. wfdash shells out to it from the
+  server, so it inherits your existing auth and no token ever reaches the browser.
+- **Node 18 or newer** — ES modules and a built-in `fetch`. Zero npm dependencies and no
+  build step, so there is nothing else to install.
+- **An agent that loads a `SKILL.md`**, or none at all — `wfdash` is a normal command and
+  works on its own from a terminal.
+- **Maps to look at.** wfdash reads one convention: an issue labelled `wayfinder:map`, its
+  tickets as GitHub sub-issues, blocking as native issue dependencies. It is built for maps
+  charted by the `/wayfinder` skill.
 
-Hooks are a Claude Code feature. Everywhere else the same rules ship as a skill called
-`wf-charting`, and **`wfdash install` writes it alongside the dashboard skill** — if you
-installed from npm you already have it, in the same roots and reported on its own line:
+## What it won't touch
 
-    wrote     ~/.agents/skills/wfdash/SKILL.md          Codex CLI, Cursor and 2 more
-    wrote     ~/.agents/skills/wf-charting/SKILL.md     Codex CLI, Cursor and 2 more
-
-It can also be taken on its own, without the dashboard:
-
-    npx skills add mingrath/wfdash        # then choose wf-charting
-
-Yes, that command reads as installing a dashboard — this repo is one effort with three faces,
-and that is the third. Every copy is the *same file* the hook injects, fanned out from one
-source at release, so the skill and the hook cannot drift into saying different things.
-
-Nothing here forks, copies, patches, or replaces the `/wayfinder` skill itself.
+- It never writes to your tracker. There are zero write endpoints.
+- Nothing here forks, copies, patches, or replaces the `/wayfinder` skill itself.
+- It shells out to `gh` from the server, so it inherits your existing auth and no token
+  ever reaches the browser.
+- It serves on `127.0.0.1:7777` and nowhere else. `WFDASH_PORT` moves it. It holds no auth,
+  so reaching it from another machine is your port-forward to arrange, not a feature here.
+- It reaps itself after 30 idle minutes.
 
 ## Which agents this works in
 
@@ -145,15 +135,6 @@ not found by that search — set `WFDASH_SEARCH` to a query that reaches them:
 
 A search that quietly returns a subset is the one failure this cannot detect for itself, so
 a short overview is worth a second look rather than a shrug.
-
-## What it will not do
-
-- It never writes to your tracker. There are zero write endpoints.
-- It shells out to `gh` from the server, so it inherits your existing auth and no token
-  ever reaches the browser.
-- It serves on `127.0.0.1:7777` and nowhere else. `WFDASH_PORT` moves it. It holds no auth,
-  so reaching it from another machine is your port-forward to arrange, not a feature here.
-- It reaps itself after 30 idle minutes.
 
 ## Updating
 
